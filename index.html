@@ -13,7 +13,7 @@
     --muted: #596478;
     --line: #cfd8e6;
     --accent: #1f5fe0;
-    --size: 150px;
+    --size: 200px;   /* ความสูงตัวละคร */
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -42,7 +42,7 @@
   .char {
     position: absolute;
     left: 0; top: 0;
-    width: var(--size);
+    width: max-content;
     cursor: grab;
     touch-action: none;
     user-select: none;
@@ -53,14 +53,17 @@
   .char.dragging .body { transform-origin: 50% 8%; }
 
   .body {
+    display: flex;
+    justify-content: center;
     transform-origin: 50% 100%;
     transform: scaleX(var(--dir, 1)) rotate(var(--tilt, 0deg));
     transition: transform 0.12s ease-out;
   }
   .sprite {
     display: block;
-    width: 100%;
-    height: auto;
+    height: var(--size);
+    width: auto;
+    max-width: none;
     transform-origin: 50% 100%;
     pointer-events: none;
     -webkit-user-drag: none;
@@ -95,7 +98,11 @@
     border-radius: 12px;
     font-size: 14px;
   }
-  #panel h1 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+  #panel h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  .ph { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  #panel.collapsed { width: max-content; max-width: calc(100% - 24px); }
+  #panel.collapsed .ph { margin-bottom: 0; }
+  #panel.collapsed > :not(.ph) { display: none; }
   #chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
   .chip {
     display: inline-flex;
@@ -115,6 +122,17 @@
   .row input[type="range"] { accent-color: var(--accent); width: 140px; }
   .hint { margin: 8px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
 
+  .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .tools label { display: inline-flex; align-items: center; gap: 6px; }
+  .tools input[type="checkbox"] { accent-color: var(--accent); }
+  .btn { font: inherit; padding: 5px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; }
+  .btn:hover:not(:disabled) { border-color: var(--accent); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+  #status { margin: 8px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; min-height: 1.5em; }
+  .cnt { font-size: 11px; color: var(--muted); }
+  body.dropping #panel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent); }
+
   @media (prefers-reduced-motion: reduce) {
     .sprite.idle, .sprite.walk { animation: none; }
     .body { transition: none; }
@@ -126,26 +144,39 @@
 <div id="stage"></div>
 
 <aside id="panel">
-  <h1>ตัวละครใน Lobby</h1>
+  <div class="ph">
+    <h1>ตัวละครใน Lobby</h1>
+    <button class="btn" id="toggle" type="button" aria-expanded="true">ย่อแผง</button>
+  </div>
   <div id="chips" role="group" aria-label="เลือกตัวละครที่จะแสดง"></div>
   <div class="row">
-    <label>ขนาด
-      <input type="range" id="size" min="80" max="320" value="150">
-      <output id="sizeOut">150</output> px
+    <label>ความสูงตัวละคร
+      <input type="range" id="size" min="100" max="420" value="200">
+      <output id="sizeOut">200</output> px
     </label>
     <label><input type="checkbox" id="names" checked> แสดงชื่อ</label>
   </div>
-  <p class="hint">ลากตัวละครได้ ถ้าไม่มีรูปในโฟลเดอร์ images/ จะใช้ตัวแทนสีแทนอัตโนมัติ</p>
+  <div class="tools">
+    <button class="btn" id="pickFiles" type="button">นำเข้ารูป (เลือกหลายไฟล์)</button>
+    <button class="btn" id="pickFolder" type="button">นำเข้าทั้งโฟลเดอร์</button>
+    <label><input type="checkbox" id="autoClean" checked> ลบพื้นขาว + จัดเฟรมให้ตรงกัน</label>
+    <button class="btn" id="exportZip" type="button" disabled>ดาวน์โหลด zip</button>
+  </div>
+  <input type="file" id="fileInput" accept="image/*" multiple hidden>
+  <input type="file" id="folderInput" webkitdirectory multiple hidden>
+  <p id="status" role="status" aria-live="polite"></p>
+  <p class="hint">ชื่อไฟล์: ชื่อตัวละคร_ท่า เช่น mint_idle.png (ท่า: idle, walk1-4, drag1-3) เลือกพร้อมกันได้ทุกตัว หรือลากไฟล์มาวางในหน้านี้ ชื่อใหม่จะถูกเพิ่มเป็นตัวละครให้เอง</p>
 </aside>
 
 <script>
 /* ---------- ตั้งค่า ---------- */
 // โฟลเดอร์รูป: images/<ชื่อ>_<ท่า>.png
-//   idle = ยืน, walk1 = ก้าวขา A, walk2 = ก้าวขา B (สลับขา), walk3 = ท่าผ่าน (ไม่บังคับ)
+//   idle = ยืน, walk1 = ก้าว A, walk2 = ก้าว B (ขาสลับข้าง)
+//   walk3 = ท่าผ่าน 1 (ขาใกล้กล้องยืนตรง), walk4 = ท่าผ่าน 2 (ขาไกลกล้องยืนตรง) (ไม่บังคับ)
 //   drag1 = ห้อยนิ่ง, drag2 = ขาแกว่งไปซ้าย (ใช้ตอนลากไปขวา), drag3 = ขาแกว่งไปขวา (ใช้ตอนลากไปซ้าย)
 const IMG_DIR = 'images/';
 const ART_FACES = 1;         // รูปท่าเดินหันขวา = 1, หันซ้าย = -1
-const WALK_SPEED_RATIO = 0.85; // ความเร็วเดิน = ขนาดตัวละคร x ค่านี้ (พิกเซลต่อวินาที) กันเท้าลื่น
+const WALK_SPEED_RATIO = 0.64; // ความเร็วเดิน = ความสูงตัวละคร x ค่านี้ (พิกเซลต่อวินาที) กันเท้าลื่น
 const FRAME_MS = 220;        // สลับเฟรมท่าเดินทุกกี่มิลลิวินาที
 const DRAG_LEAN_SPEED = 450; // ความเร็วลาก (px/วินาที) ที่ถือว่าแกว่งสุด
 const DRAG_TILT_DEG = 10;    // องศาเอียงสูงสุดตอนแกว่งสุด
@@ -155,19 +186,19 @@ const ROSTER = [
   { name: 'latte',   label: 'Latte',   color: '#c9a27c' },
   { name: 'fasai',   label: 'Fasai',   color: '#7cc8f2' },
   { name: 'storm',   label: 'Storm',   color: '#3b5a8c' },
-  { name: 'watt',    label: 'Watt',    color: '#ffd23f', on: true  },
-  { name: 'sunny',   label: 'Sunny',   color: '#ff9f43', on: true  },
+  { name: 'watt',    label: 'Watt',    color: '#ffd23f' },
+  { name: 'sunny',   label: 'Sunny',   color: '#ff9f43' },
   { name: 'iron',    label: 'Iron',    color: '#8a949e' },
   { name: 'nami',    label: 'Nami',    color: '#4fd1c5' },
   { name: 'nucleia', label: 'Nucleia', color: '#b6ff4d' },
-  { name: 'chrono',  label: 'Chrono',  color: '#8e5bd6', on: true  },
+  { name: 'chrono',  label: 'Chrono',  color: '#8e5bd6' },
   { name: 'aurora',  label: 'Aurora',  color: '#d58cf0' }
 ];
 
 /* ---------- ตัวช่วย ---------- */
 const stage = document.getElementById('stage');
 const active = new Map();   // ชื่อ -> ตัวละครที่แสดงอยู่
-let curSize = 150;          // ขนาดตัวละครปัจจุบัน (px) ตรงกับ --size
+let curSize = 200;          // ความสูงตัวละครปัจจุบัน (px) ตรงกับ --size
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -195,30 +226,40 @@ function loadImg(url) {
   });
 }
 
-async function loadSprites(def) {
-  const names = ['idle', 'walk1', 'walk2', 'walk3', 'drag1', 'drag2', 'drag3'];
-  const [idle, w1, w2, w3, d1, d2, d3] = await Promise.all(
-    names.map(k => loadImg(IMG_DIR + def.name + '_' + k + '.png'))
-  );
-  if (!idle) {
+const POSES = ['idle', 'walk1', 'walk2', 'walk3', 'walk4', 'drag1', 'drag2', 'drag3'];
+
+// u = { idle, walk1, ... } ค่าเป็น url ของรูป หรือ null ถ้าไม่มี
+function buildSprites(def, u) {
+  def.count = POSES.filter(k => u[k]).length;
+  if (!u.idle) {
     // ไม่มีรูปยืน: ใช้ตัวแทนทั้งชุด
     const p0 = placeholder(def.color, 0), p1 = placeholder(def.color, 1);
     return { real: false, idle: p0, walk: [p0, p1], drag: { hang: p0, left: p1, right: p1 } };
   }
-  // ท่าเดิน: ขา A -> ท่าผ่าน -> ขา B -> ท่าผ่าน (ถ้าไม่มีท่าผ่าน สลับ A/B อย่างเดียว)
-  const a = w1 || idle;
-  const b = w2 || a;
-  const walk = w3 ? [a, w3, b, w3] : [a, b];
+  // ท่าเดิน: ก้าว A -> ท่าผ่าน 1 -> ก้าว B -> ท่าผ่าน 2 (ถ้ามีท่าผ่านแค่ท่าเดียว ใช้ซ้ำ ถ้าไม่มีเลย สลับ A/B อย่างเดียว)
+  const a = u.walk1 || u.idle;
+  const b = u.walk2 || a;
+  const p1 = u.walk3 || u.walk4;
+  const p2 = u.walk4 || u.walk3;
+  const walk = p1 ? [a, p1, b, p2] : [a, b];
   // ท่าลาก: ห้อยนิ่ง / ขาแกว่งซ้าย / ขาแกว่งขวา (ถ้ารูปขาด ใช้ท่าห้อยแทน)
-  const hang = d1 || idle;
-  const drag = { hang, left: d2 || hang, right: d3 || hang };
-  return { real: true, idle, walk, drag };
+  const hang = u.drag1 || u.idle;
+  const drag = { hang, left: u.drag2 || hang, right: u.drag3 || hang };
+  return { real: true, idle: u.idle, walk, drag };
+}
+
+async function loadSprites(def) {
+  if (def.imported) return buildSprites(def, def.imported);   // รูปที่นำเข้าผ่านหน้านี้
+  const found = await Promise.all(POSES.map(k => loadImg(IMG_DIR + def.name + '_' + k + '.png')));
+  const u = {};
+  POSES.forEach((k, i) => { u[k] = found[i]; });
+  return buildSprites(def, u);
 }
 
 const panel = document.getElementById('panel');
 function bounds(c) {
   const w = c.el.offsetWidth || curSize;
-  const h = c.el.offsetHeight || curSize * 1.4;
+  const h = c.el.offsetHeight || curSize * 1.15;
   const reserve = panel.offsetHeight + 24;   // เว้นพื้นที่แผงควบคุมด้านล่าง ตัวละครจะไม่เดินไปซ่อนใต้แผง
   return { w: Math.max(0, innerWidth - w), h: Math.max(0, innerHeight - h - reserve) };
 }
@@ -246,7 +287,7 @@ function pickTarget(c) {
 }
 
 /* ---------- สร้าง/ลบตัวละคร ---------- */
-async function spawn(def) {
+async function spawn(def, pos) {
   if (active.has(def.name)) return;
   const c = {
     def, ready: false, x: 0, y: 0, tx: 0, ty: 0,
@@ -256,6 +297,7 @@ async function spawn(def) {
   };
   active.set(def.name, c);
   c.sprites = await loadSprites(def);
+  updateChip(def);
   if (active.get(def.name) !== c) return;   // ถูกปิดระหว่างโหลดรูป
 
   const el = document.createElement('div');
@@ -270,8 +312,8 @@ async function spawn(def) {
   stage.appendChild(el);
 
   const b = bounds(c);
-  c.x = rand(0, b.w);
-  c.y = rand(0, b.h);
+  c.x = pos ? clamp(pos.x, 0, b.w) : rand(0, b.w);   // นำเข้ารูปใหม่ทับตัวเดิม: อยู่ตำแหน่งเดิม
+  c.y = pos ? clamp(pos.y, 0, b.h) : rand(0, b.h);
   apply(c);
 
   el.addEventListener('pointerdown', e => {
@@ -386,7 +428,9 @@ addEventListener('resize', clampAll);
 
 /* ---------- แผงควบคุม ---------- */
 const chips = document.getElementById('chips');
-for (const def of ROSTER) {
+const chipEls = new Map();   // ชื่อ -> { cb, cnt }
+
+function addChip(def) {
   const label = document.createElement('label');
   label.className = 'chip';
   const cb = document.createElement('input');
@@ -395,9 +439,21 @@ for (const def of ROSTER) {
   const dot = document.createElement('span');
   dot.className = 'dot';
   dot.style.background = def.color;
-  label.append(cb, dot, document.createTextNode(def.label));
+  const cnt = document.createElement('span');
+  cnt.className = 'cnt';
+  label.append(cb, dot, document.createTextNode(def.label), cnt);
   cb.addEventListener('change', () => (cb.checked ? spawn(def) : despawn(def.name)));
   chips.append(label);
+  chipEls.set(def.name, { cb, cnt });
+}
+
+function updateChip(def) {
+  const e = chipEls.get(def.name);
+  if (e && def.count !== undefined) e.cnt.textContent = def.count + '/' + POSES.length;   // จำนวนท่าที่มีรูปจริง
+}
+
+for (const def of ROSTER) {
+  addChip(def);
   if (def.on) spawn(def);
 }
 
@@ -411,6 +467,356 @@ sizeIn.addEventListener('input', () => {
 });
 document.getElementById('names').addEventListener('change', e => {
   stage.classList.toggle('hide-names', !e.target.checked);
+});
+
+/* ---------- นำเข้ารูปเอง ---------- */
+const statusEl = document.getElementById('status');
+const exportBtn = document.getElementById('exportZip');
+const fileInput = document.getElementById('fileInput');
+const folderInput = document.getElementById('folderInput');
+const imported = new Map();   // ชื่อ -> { def, blobs } เก็บไว้ส่งออก zip
+const srcAll = new Map();     // ชื่อ -> { ท่า: File } รูปต้นฉบับทั้งหมดที่เคยนำเข้า (ไว้ประมวลผลใหม่ทั้งชุด)
+let busy = false;
+
+const NAME_RE = /^(.*?)[\s_\-]*(idle|walk|drag)[\s_\-]*([1-4])?\.(png|webp|jpe?g)$/i;
+const WHITE = 236;   // พิกเซลที่ R,G,B ทุกค่า >= ค่านี้ ถือว่าเป็นพื้นขาว
+const OUT_H = 600;   // ความสูงรูปที่ส่งออก (px)
+
+const setStatus = t => { statusEl.textContent = t; };
+const pause = () => new Promise(r => setTimeout(r, 0));   // ให้หน้าจอวาดใหม่ระหว่างประมวลผล
+const toBlob = cv => new Promise(res => cv.toBlob(res, 'image/png'));
+
+function parseName(fn) {
+  const m = NAME_RE.exec(fn.trim());
+  if (!m) return null;
+  const who = m[1].trim().toLowerCase().replace(/[^a-z0-9\u0E00-\u0E7F]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!who) return null;
+  const kind = m[2].toLowerCase();
+  return { who, pose: kind === 'idle' ? 'idle' : kind + (m[3] || '1') };
+}
+
+function hashColor(s) {
+  let h = 0;
+  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return 'hsl(' + h + ',65%,62%)';
+}
+
+// ลบพื้นขาวที่ต่อกับขอบภาพ (พื้นขาวในตัวละคร เช่น ชุดสีขาว ที่ถูกเส้นขอบล้อมไว้จะไม่โดนลบ)
+function removeWhiteBg(d, w, h) {
+  const n = w * h;
+  const bg = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  let sp = 0;
+  const push = i => {
+    if (bg[i]) return;
+    const o = i * 4;
+    if (d[o] >= WHITE && d[o + 1] >= WHITE && d[o + 2] >= WHITE) { bg[i] = 1; stack[sp++] = i; }
+  };
+  for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+  while (sp) {
+    const i = stack[--sp];
+    const x = i % w;
+    if (x > 0) push(i - 1);
+    if (x < w - 1) push(i + 1);
+    if (i >= w) push(i - w);
+    if (i < n - w) push(i + w);
+  }
+  // ขอบนุ่ม: พิกเซลที่ติดพื้นที่ลบไปไม่เกิน 2px โปร่งตามความขาว
+  const grow = src => {
+    const out = new Uint8Array(n);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (src[i] || (x > 0 && src[i - 1]) || (x < w - 1 && src[i + 1]) || (y > 0 && src[i - w]) || (y < h - 1 && src[i + w])) out[i] = 1;
+      }
+    }
+    return out;
+  };
+  const near = grow(grow(bg));
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    if (bg[i]) {
+      d[o + 3] = 0;
+    } else if (near[i]) {
+      const mn = Math.min(d[o], d[o + 1], d[o + 2]);
+      d[o + 3] = Math.max(90, Math.min(255, Math.round((255 - mn) * 255 / 60)));
+    }
+  }
+}
+
+function alphaBBox(d, w, h) {
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w * 4;
+    for (let x = 0; x < w; x++) {
+      if (d[row + x * 4 + 3] > 40) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  return x1 < 0 ? null : { x0, y0, x1: x1 + 1, y1: y1 + 1 };   // x1, y1 เป็นขอบนอก
+}
+
+// files = { ท่า: File } -> { urls, blobs }
+async function processCharacter(files, clean) {
+  const poses = POSES.filter(k => files[k]);
+  const bmps = {};
+  for (const k of poses) bmps[k] = await createImageBitmap(files[k]);
+  const ref = bmps.idle || bmps[poses[0]];
+  const W = ref.width, H = ref.height;
+
+  const frames = {};
+  for (const k of poses) {
+    const cv = document.createElement('canvas');
+    cv.width = W;
+    cv.height = H;
+    const cx = cv.getContext('2d', { willReadFrequently: true });
+    const b = bmps[k];
+    const sc = b.height === H ? 1 : H / b.height;   // ขนาดไม่เท่ากัน: ปรับให้สูงเท่ารูปอ้างอิง
+    cx.drawImage(b, (W - b.width * sc) / 2, 0, b.width * sc, H);
+    b.close();
+    frames[k] = { cv, bb: null, dy: 0 };
+    if (!clean) continue;
+    const id = cx.getImageData(0, 0, W, H);
+    const d = id.data;
+    const corners = [3, (W - 1) * 4 + 3, (H - 1) * W * 4 + 3, (H * W - 1) * 4 + 3];
+    if (!corners.some(i => d[i] < 250)) removeWhiteBg(d, W, H);   // โปร่งใสอยู่แล้วก็ข้ามการลบพื้น
+    cx.putImageData(id, 0, 0);
+    frames[k].bb = alphaBBox(d, W, H);
+    await pause();
+  }
+
+  const blobs = {}, urls = {};
+  if (!clean) {
+    for (const k of poses) {
+      blobs[k] = await toBlob(frames[k].cv);
+      urls[k] = URL.createObjectURL(blobs[k]);
+    }
+    return { urls, blobs };
+  }
+  const empty = poses.filter(k => !frames[k].bb);
+  if (empty.length) throw new Error('รูปว่างเปล่าหลังลบพื้น (' + empty.join(', ') + ')');
+
+  // เส้นเท้า: ท่ายืน/เดินให้เท้าอยู่ระดับเดียวกับ idle (ท่าลากลอยอยู่ ไม่ขยับ)
+  const ground = poses.filter(k => k === 'idle' || k.startsWith('walk'));
+  const base = frames.idle ? frames.idle.bb.y1 : Math.max(0, ...ground.map(k => frames[k].bb.y1));
+  let x0 = W, y0 = H, x1 = 0, y1 = 0;
+  for (const k of poses) {
+    const f = frames[k];
+    f.dy = ground.includes(k) ? base - f.bb.y1 : 0;
+    x0 = Math.min(x0, f.bb.x0);
+    y0 = Math.min(y0, f.bb.y0 + f.dy);
+    x1 = Math.max(x1, f.bb.x1);
+    y1 = Math.max(y1, f.bb.y1 + f.dy);
+  }
+  const pad = 10;
+  x0 = Math.max(0, x0 - pad);
+  y0 = Math.max(0, y0 - pad);
+  x1 = Math.min(W, x1 + pad);
+  y1 = Math.min(H, y1 + pad);
+  const bw = x1 - x0, bh = y1 - y0;
+  const oh = Math.min(OUT_H, bh), ow = Math.round(bw * oh / bh);
+
+  // ทุกท่าตัดด้วยกรอบเดียวกัน ขนาดผืนภาพเท่ากัน สลับเฟรมแล้วไม่กระตุก
+  for (const k of poses) {
+    const f = frames[k];
+    const sh = document.createElement('canvas');
+    sh.width = W;
+    sh.height = H;
+    sh.getContext('2d').drawImage(f.cv, 0, f.dy);
+    const out = document.createElement('canvas');
+    out.width = ow;
+    out.height = oh;
+    const ox = out.getContext('2d');
+    ox.imageSmoothingQuality = 'high';
+    ox.drawImage(sh, x0, y0, bw, bh, 0, 0, ow, oh);
+    blobs[k] = await toBlob(out);
+    urls[k] = URL.createObjectURL(blobs[k]);
+    await pause();
+  }
+  return { urls, blobs };
+}
+
+async function importFiles(fileList) {
+  if (busy) return;
+  const groups = new Map();
+  let skipped = 0;
+  for (const f of fileList) {
+    if (!/^image\//.test(f.type) && !/\.(png|webp|jpe?g)$/i.test(f.name)) continue;   // ไม่ใช่รูป ข้ามเงียบๆ
+    const p = parseName(f.name);
+    if (!p) { skipped++; continue; }
+    if (!groups.has(p.who)) groups.set(p.who, {});
+    groups.get(p.who)[p.pose] = f;   // ชื่อซ้ำ ใช้ไฟล์ท้ายสุด
+  }
+  if (!groups.size) {
+    setStatus('ไม่พบไฟล์ที่ชื่อตรงรูปแบบ เช่น mint_idle.png, mint_walk1.png');
+    return;
+  }
+
+  busy = true;
+  document.querySelectorAll('.tools .btn').forEach(b => { b.disabled = true; });
+  const clean = document.getElementById('autoClean').checked;
+  const report = [];
+  let n = 0;
+  for (const [who, files] of groups) {
+    let def = ROSTER.find(d => d.name === who);
+    if (!def) {   // ชื่อใหม่: เพิ่มตัวละครให้เอง
+      def = { name: who, label: who.charAt(0).toUpperCase() + who.slice(1), color: hashColor(who) };
+      ROSTER.push(def);
+      addChip(def);
+    }
+    setStatus('กำลังประมวลผล ' + def.label + ' (' + (++n) + '/' + groups.size + ') ...');
+    await pause();
+    try {
+      // รวมกับรูปที่เคยนำเข้า: ท่าใหม่ทับท่าเดิม แล้วประมวลผลทั้งชุดใหม่ เพื่อให้ขนาดผืนภาพเท่ากันทุกท่า
+      const merged = Object.assign({}, srcAll.get(def.name), files);
+      const res = await processCharacter(merged, clean);
+      srcAll.set(def.name, merged);
+      const oldUrls = def.imported ? Object.values(def.imported) : [];
+      def.imported = res.urls;
+      imported.set(def.name, { def, blobs: res.blobs });
+      const prev = active.get(def.name);
+      const pos = prev && prev.ready ? { x: prev.x, y: prev.y } : null;
+      despawn(def.name);
+      chipEls.get(def.name).cb.checked = true;
+      await spawn(def, pos);
+      oldUrls.forEach(u => URL.revokeObjectURL(u));
+      const missing = POSES.filter(k => !res.urls[k]);
+      report.push(def.label + ' ' + (POSES.length - missing.length) + '/' + POSES.length + (missing.length ? ' (ขาด ' + missing.join(', ') + ')' : ''));
+    } catch (err) {
+      report.push(def.label + ': ผิดพลาด ' + err.message);
+    }
+  }
+  busy = false;
+  document.querySelectorAll('.tools .btn').forEach(b => { b.disabled = false; });
+  exportBtn.disabled = imported.size === 0;
+  setStatus('นำเข้าแล้ว: ' + report.join(' | ') + (skipped ? ' | ข้าม ' + skipped + ' ไฟล์ (ชื่อไม่ตรงรูปแบบ)' : ''));
+}
+
+/* ---------- ส่งออก zip (ไม่บีบอัด สร้างเองในหน้านี้ ไม่ต้องใช้ไลบรารี) ---------- */
+const CRC_T = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(b) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 255] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function makeZip(files) {   // files = [{ name, data: Uint8Array }]
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  let offset = 0;
+  const now = new Date();
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  for (const f of files) {
+    const nameB = enc.encode(f.name);
+    const crc = crc32(f.data), size = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true);
+    lh.setUint16(4, 20, true);
+    lh.setUint16(6, 0x0800, true);          // ชื่อไฟล์เป็น UTF-8
+    lh.setUint16(10, dosTime, true);
+    lh.setUint16(12, dosDate, true);
+    lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true);
+    lh.setUint32(22, size, true);
+    lh.setUint16(26, nameB.length, true);
+    parts.push(lh.buffer, nameB, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true);
+    ch.setUint16(4, 20, true);
+    ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true);
+    ch.setUint16(12, dosTime, true);
+    ch.setUint16(14, dosDate, true);
+    ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true);
+    ch.setUint32(24, size, true);
+    ch.setUint16(28, nameB.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(ch.buffer, nameB);
+    offset += 30 + nameB.length + size;
+  }
+  let cdSize = 0;
+  for (const c of central) cdSize += c.byteLength;
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, files.length, true);
+  end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true);
+  end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+}
+
+async function exportZip() {
+  if (!imported.size) return;
+  exportBtn.disabled = true;
+  setStatus('กำลังสร้างไฟล์ zip ...');
+  await pause();
+  const files = [];
+  for (const [name, v] of imported) {
+    for (const k of POSES) {
+      if (!v.blobs[k]) continue;
+      files.push({ name: 'images/' + name + '_' + k + '.png', data: new Uint8Array(await v.blobs[k].arrayBuffer()) });
+    }
+  }
+  const url = URL.createObjectURL(makeZip(files));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'voltrush_images.zip';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  exportBtn.disabled = false;
+  setStatus('ดาวน์โหลด voltrush_images.zip แล้ว (' + files.length + ' ไฟล์) แตกไว้ข้าง lobby_demo.html ได้เลย');
+}
+
+/* ---------- ปุ่มและลากไฟล์มาวาง ---------- */
+document.getElementById('pickFiles').addEventListener('click', () => fileInput.click());
+document.getElementById('pickFolder').addEventListener('click', () => folderInput.click());
+for (const inp of [fileInput, folderInput]) {
+  inp.addEventListener('change', () => {
+    const list = Array.from(inp.files);
+    inp.value = '';
+    importFiles(list);
+  });
+}
+exportBtn.addEventListener('click', exportZip);
+document.getElementById('toggle').addEventListener('click', e => {
+  const collapsed = panel.classList.toggle('collapsed');
+  e.target.textContent = collapsed ? 'ขยายแผง' : 'ย่อแผง';
+  e.target.setAttribute('aria-expanded', String(!collapsed));
+  clampAll();   // พื้นที่เดินเปลี่ยน ดึงตัวละครกลับเข้ากรอบ
+});
+
+const hasFiles = e => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+addEventListener('dragover', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  document.body.classList.add('dropping');
+});
+addEventListener('dragleave', e => {
+  if (!e.relatedTarget) document.body.classList.remove('dropping');
+});
+addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  document.body.classList.remove('dropping');
+  importFiles(Array.from(e.dataTransfer.files));
 });
 </script>
 </body>
